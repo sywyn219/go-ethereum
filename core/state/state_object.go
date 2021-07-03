@@ -104,12 +104,22 @@ type Account struct {
 	Balance  *big.Int
 	Root     common.Hash // merkle root of the storage trie
 	CodeHash []byte
+	Pledge   *big.Int    //Balance of miners pledged
+	VestingFunds []vestingFund    //Balance of miners Fund by BlockNumber
 }
 
+type vestingFund struct {
+	BlockNumber  *big.Int 
+	Amount  *big.Int
+}
 // newObject creates a state object.
 func newObject(db *StateDB, address common.Address, data Account) *stateObject {
 	if data.Balance == nil {
 		data.Balance = new(big.Int)
+	}
+
+	if data.Pledge == nil {
+		data.Pledge = new(big.Int)
 	}
 	if data.CodeHash == nil {
 		data.CodeHash = emptyCodeHash
@@ -438,6 +448,7 @@ func (s *stateObject) SubBalance(amount *big.Int) {
 	s.SetBalance(new(big.Int).Sub(s.Balance(), amount))
 }
 
+
 func (s *stateObject) SetBalance(amount *big.Int) {
 	s.db.journal.append(balanceChange{
 		account: &s.address,
@@ -449,6 +460,46 @@ func (s *stateObject) SetBalance(amount *big.Int) {
 func (s *stateObject) setBalance(amount *big.Int) {
 	s.data.Balance = amount
 }
+
+
+// AddPledge adds amount to Pledge's balance.
+// It is used to add funds to the destination account of a transfer.
+func (s *stateObject) AddPledge(amount *big.Int) {
+	// EIP161: We must check emptiness for the objects such that the account
+	// clearing (0,0,0 objects) can take effect.
+	if amount.Sign() == 0 {
+		if s.empty() {
+			s.touch()
+		}
+		return
+	}
+	s.SetPledge(new(big.Int).Add(s.Pledge(), amount))
+}
+
+
+// SubBalance removes amount from s's balance.
+// It is used to remove funds from the origin account of a transfer.
+func (s *stateObject) SubPledge(amount *big.Int) {
+	if amount.Sign() == 0 {
+		return
+	}
+	s.SetPledge(new(big.Int).Sub(s.Pledge(), amount))
+}
+
+
+func (s *stateObject) SetPledge(amount *big.Int) {
+	s.db.journal.append(balanceChange{
+		account: &s.address,
+		prev:    new(big.Int).Set(s.data.Balance),
+	})
+	s.setPledge(amount)
+}
+
+func (s *stateObject) setPledge(amount *big.Int) {
+	s.data.Pledge = amount
+}
+
+
 
 // Return the gas back to the origin. Used by the Virtual machine or Closures
 func (s *stateObject) ReturnGas(gas *big.Int) {}
@@ -544,6 +595,10 @@ func (s *stateObject) CodeHash() []byte {
 
 func (s *stateObject) Balance() *big.Int {
 	return s.data.Balance
+}
+
+func (s *stateObject) Pledge() *big.Int {
+	return s.data.Pledge
 }
 
 func (s *stateObject) Nonce() uint64 {

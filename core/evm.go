@@ -54,6 +54,7 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
 		Transfer:    Transfer,
+		PledgeTransfer:PledgeTransfer,
 		GetHash:     GetHashFn(header, chain),
 		Coinbase:    beneficiary,
 		BlockNumber: new(big.Int).Set(header.Number),
@@ -116,4 +117,12 @@ func CanTransfer(db vm.StateDB, addr common.Address, amount *big.Int) bool {
 func Transfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int) {
 	db.SubBalance(sender, amount)
 	db.AddBalance(recipient, amount)
+}
+
+
+
+// Transfer subtracts amount from sender and adds amount to recipient using the given Db
+func PledgeTransfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int) {
+	db.SubPledge(sender, amount)
+	db.AddPledge(recipient, amount)
 }

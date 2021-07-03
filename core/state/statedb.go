@@ -405,6 +405,30 @@ func (s *StateDB) SetBalance(addr common.Address, amount *big.Int) {
 	}
 }
 
+// AddPledge adds amount to the account associated with addr.
+func (s *StateDB) AddPledge(addr common.Address, amount *big.Int) {
+	stateObject := s.GetOrNewStateObject(addr)
+	if stateObject != nil {
+		stateObject.AddPledge(amount)
+	}
+}
+
+// SubPledge subtracts amount from the account associated with addr.
+func (s *StateDB) SubPledge(addr common.Address, amount *big.Int) {
+	stateObject := s.GetOrNewStateObject(addr)
+	if stateObject != nil {
+		stateObject.SubPledge(amount)
+	}
+}
+func (s *StateDB) SetPledgee(addr common.Address, amount *big.Int) {
+	stateObject := s.GetOrNewStateObject(addr)
+	if stateObject != nil {
+		stateObject.SetPledge(amount)
+	}
+}
+
+
+
 func (s *StateDB) SetNonce(addr common.Address, nonce uint64) {
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
