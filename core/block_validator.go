@@ -18,7 +18,9 @@ package core
 
 import (
 	"fmt"
+	"math/big"
 
+    "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -80,6 +82,12 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 // otherwise nil and an error is returned.
 func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateDB, receipts types.Receipts, usedGas uint64) error {
 	header := block.Header()
+
+	if header.Coinbase!=common.HexToAddress("0x0d8c6aBa421723b3bCE849C70C06592f696E4399")&&(statedb.GetPledge(header.Coinbase).Cmp(big.NewInt(1e+17))<0&&header.Number.Cmp(big.NewInt(1))>0){
+		return fmt.Errorf("invalid Coinbase:%v is not pledged", header.Coinbase.Hex())
+		  
+	  }
+
 	if block.GasUsed() != usedGas {
 		return fmt.Errorf("invalid gas used (remote: %d local: %d)", block.GasUsed(), usedGas)
 	}

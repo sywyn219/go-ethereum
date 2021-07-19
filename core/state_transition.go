@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"encoding/hex"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
@@ -292,8 +294,14 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	st.gas -= gas
 
 	// Check clause 6
-	if msg.Value().Sign() > 0 && !st.evm.Context.CanTransfer(st.state, msg.From(), msg.Value()) {
+	if msg.Value().Sign() > 0 && !strings.EqualFold(hex.EncodeToString(msg.Data()),hex.EncodeToString([]byte("redeem")))&&!st.evm.Context.CanTransfer(st.state, msg.From(), msg.Value()) {
 		return nil, fmt.Errorf("%w: address %v", ErrInsufficientFundsForTransfer, msg.From().Hex())
+	}
+    
+
+
+	if strings.EqualFold(hex.EncodeToString(msg.Data()),hex.EncodeToString([]byte("redeem")))&&!st.evm.Context.CanRedeem(st.state, msg.From(), msg.Value()) {
+		return nil, fmt.Errorf("%w: address %v", ErrInsufficientFundsForPledge, msg.From().Hex())
 	}
 
 	// Set up the initial access list.

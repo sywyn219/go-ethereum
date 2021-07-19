@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"strings"
 	"time"
+	"encoding/hex"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/accounts"
@@ -574,6 +575,27 @@ func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Add
 	return (*hexutil.Big)(state.GetBalance(address)), state.Error()
 }
 
+
+// GetPledge returns the amount of wei for the given address in the state of the
+// given block number. The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta
+func (s *PublicBlockChainAPI) GetPledge(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (*hexutil.Big, error) {
+	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	return (*hexutil.Big)(state.GetPledge(address)), state.Error()
+}
+
+// GetTotalLockedFunds returns the amount of wei for the given address in the state of the
+// given block number. The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta
+func (s *PublicBlockChainAPI) GetTotalLockedFunds(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (*hexutil.Big, error) {
+	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	return (*hexutil.Big)(state.GetTotalLockedFunds(address)), state.Error()
+}
+
 // Result structs for GetProof
 type AccountResult struct {
 	Address      common.Address  `json:"address"`
@@ -583,6 +605,18 @@ type AccountResult struct {
 	Nonce        hexutil.Uint64  `json:"nonce"`
 	StorageHash  common.Hash     `json:"storageHash"`
 	StorageProof []StorageResult `json:"storageProof"`
+
+	Pledge       *hexutil.Big    `json:"pledge"`
+
+
+	TotalLockedFunds *hexutil.Big `json:"totalLockedFunds"`
+
+	
+	
+	// Funds []struct{
+	// 	BlockNumber  *big.Int 
+	//     Amount  *big.Int
+	// }   //Balance of miners Fund by BlockNumber
 }
 
 type StorageResult struct {
@@ -638,6 +672,8 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 		Nonce:        hexutil.Uint64(state.GetNonce(address)),
 		StorageHash:  storageHash,
 		StorageProof: storageProof,
+		Pledge :(*hexutil.Big)(state.GetPledge(address)),
+		TotalLockedFunds:(*hexutil.Big)(state.GetTotalLockedFunds(address)),
 	}, state.Error()
 }
 
@@ -959,10 +995,17 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		balance := state.GetBalance(*args.From) // from can't be nil
 		available := new(big.Int).Set(balance)
 		if args.Value != nil {
-			if args.Value.ToInt().Cmp(available) >= 0 {
-				return 0, errors.New("insufficient funds for transfer")
+			if !strings.EqualFold(args.Data.String(),"0x"+hex.EncodeToString([]byte("redeem"))){
+				if args.Value.ToInt().Cmp(available) >= 0 {
+					return 0, errors.New("insufficient funds for transfer")
+				}
+				available.Sub(available, args.Value.ToInt())
+			}else{
+				if args.Value.ToInt().Cmp(state.GetPledge(*args.From)) ==1{
+					return 0, errors.New("insufficient funds for Pledge")
+				}
 			}
-			available.Sub(available, args.Value.ToInt())
+			
 		}
 		allowance := new(big.Int).Div(available, args.GasPrice.ToInt())
 

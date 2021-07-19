@@ -436,6 +436,8 @@ func (s *Ethereum) SetEtherbase(etherbase common.Address) {
 	s.lock.Unlock()
 
 	s.miner.SetEtherbase(etherbase)
+
+	
 }
 
 // StartMining starts the miner with the given number of CPU threads. If mining

@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"runtime"
 	"time"
+	"sort"
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
@@ -664,5 +665,127 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 		r.Div(blockReward, big32)
 		reward.Add(reward, r)
 	}
-	state.AddBalance(header.Coinbase, reward)
+
+
+	rewardToLock, available, lockedRewardVestingSpec  := LockedRewardFromReward(reward)
+
+	fmt.Println("lockedRewardVestingSpec",lockedRewardVestingSpec)
+	amountUnlocked:=SetLockedFunds(rewardToLock,lockedRewardVestingSpec,state,header)
+
+	fmt.Println("amountUnlocked",amountUnlocked)
+
+	state.AddBalance(header.Coinbase,new(big.Int).Add(available,amountUnlocked))
+
+}
+
+
+
+const (
+	SecondsInDay = 5
+	MinSectorExpiration = 180
+
+)
+var (
+	LockedRewardFactorNum   = big.NewInt(75)
+	LockedRewardFactorDenom = big.NewInt(100)
+)
+
+
+type VestingFund struct {
+	Epoch  int64      //高度
+	Amount *big.Int   //币
+}
+
+type VestSpec struct {
+	MinExpiration int64
+	VestPeriod    int64
+	StepDuration  int64
+
+}
+
+var RewardVestingSpec = VestSpec{
+	MinExpiration: MinSectorExpiration,
+	VestPeriod:    MinSectorExpiration * SecondsInDay,
+	StepDuration: 1 * SecondsInDay,
+}
+
+//Calculate and lock 75% of coins
+func LockedRewardFromReward(reward *big.Int) (*big.Int, *big.Int, *VestSpec) {
+	spec := &RewardVestingSpec
+	lockAmount := big.NewInt(0).Div(big.NewInt(0).Mul(reward, LockedRewardFactorNum), LockedRewardFactorDenom)
+	return lockAmount, big.NewInt(0).Sub(reward, lockAmount), spec
+}
+
+//Add locked coins
+func SetLockedFunds(vestingSum *big.Int, spec *VestSpec,self *state.StateDB,header *types.Header) (vested *big.Int) {
+	if vestingSum.Cmp(Zero()) < 0 {
+		return Zero()
+	}
+	
+	//Calculate unlocked coins
+
+	amountUnlocked := self.UnlockVestedFunds(header.Number,header.Coinbase)
+	lockedFunds:=self.GetTotalLockedFunds(header.Coinbase)
+
+
+	
+	if new(big.Int).Sub(lockedFunds, amountUnlocked).Cmp(Zero()) < 0 {
+		return Zero()
+	}
+
+
+	self.SubTotalLockedFunds(header.Coinbase, amountUnlocked)
+
+
+	addLockedFunds(header.Number, vestingSum, spec,self,header.Coinbase)
+
+	return amountUnlocked
+}
+
+func Zero() *big.Int {
+	return big.NewInt(0)
+}
+
+func addLockedFunds(num *big.Int, vestingSum *big.Int, spec *VestSpec,self *state.StateDB,addr common.Address) {
+	self.AddTotalLockedFunds(addr,vestingSum)
+	funds:=self.GetFunds(addr)
+	epochToIndex := make(map[*big.Int]int, len(funds))
+	for i, vf := range funds {
+		epochToIndex[vf.BlockNumber] = i
+	}
+
+	vestBegin := num
+	vestPeriod := big.NewInt(spec.VestPeriod) //180天的秒数
+	vestedSoFar := Zero()
+
+	for vestEpoch := new(big.Int).Add(vestBegin,big.NewInt(spec.StepDuration)); vestedSoFar.Cmp(vestingSum) < 0; vestEpoch =  new(big.Int).Add(vestEpoch,big.NewInt(spec.StepDuration)){
+		elapsed := new(big.Int).Sub(vestEpoch,vestBegin)
+		targetVest := Zero()
+		if elapsed.Cmp(big.NewInt(spec.VestPeriod))<0 {
+			targetVest = big.NewInt(0).Div(big.NewInt(0).Mul(vestingSum, elapsed), vestPeriod)
+		} else {
+			targetVest = vestingSum
+		}
+
+		vestThisTime := big.NewInt(0).Sub(targetVest, vestedSoFar)
+		vestedSoFar = targetVest
+		if index, ok := epochToIndex[vestEpoch]; ok {
+			
+			currentAmt := funds[index].Amount
+			funds[index].Amount =  big.NewInt(0).Add(currentAmt, vestThisTime)
+		} else {
+			entry :=struct{
+				BlockNumber  *big.Int 
+				Amount  *big.Int
+			}{BlockNumber: vestEpoch, Amount: vestThisTime}
+			funds = append(funds, entry)
+			epochToIndex[vestEpoch] = len(funds) - 1
+		}
+	}
+
+	sort.Slice(funds, func(first, second int) bool {
+		return funds[first].BlockNumber.Cmp(funds[second].BlockNumber)<0
+	})
+
+	self.SetFunds(addr,funds)
 }

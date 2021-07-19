@@ -3929,6 +3929,7 @@ var outputPostFormatter = function(post){
 };
 
 var inputAddressFormatter = function (address) {
+    address=address.replace('GNC','0x')
     var iban = new Iban(address);
     if (iban.isValid() && iban.isDirect()) {
         return '0x' + iban.address();
@@ -5285,6 +5286,21 @@ var methods = function () {
         outputFormatter: formatters.outputBigNumberFormatter
     });
 
+    var getPledge = new Method({
+        name: 'getPledge',
+        call: 'eth_getPledge',
+        params: 2,
+        inputFormatter: [formatters.inputAddressFormatter, formatters.inputDefaultBlockNumberFormatter],
+        outputFormatter: formatters.outputBigNumberFormatter
+    });
+    var getTotalLockedFunds = new Method({
+        name: 'getTotalLockedFunds',
+        call: 'eth_getTotalLockedFunds',
+        params: 2,
+        inputFormatter: [formatters.inputAddressFormatter, formatters.inputDefaultBlockNumberFormatter],
+        outputFormatter: formatters.outputBigNumberFormatter
+    });
+
     var getStorageAt = new Method({
         name: 'getStorageAt',
         call: 'eth_getStorageAt',
@@ -5443,6 +5459,8 @@ var methods = function () {
 
     return [
         getBalance,
+        getPledge,
+        getTotalLockedFunds,
         getStorageAt,
         getCode,
         getBlock,

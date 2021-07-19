@@ -104,6 +104,22 @@ type (
 		account *common.Address
 		prev    *big.Int
 	}
+
+	pledgeChange struct {
+		account *common.Address
+		prev    *big.Int
+	}
+
+	totalLockedFundsChange struct {
+		account *common.Address
+		prev    *big.Int
+	}
+
+	fundsChange struct {
+		account *common.Address
+		prev    []struct{BlockNumber *big.Int; Amount *big.Int}
+	}
+
 	nonceChange struct {
 		account *common.Address
 		prev    uint64
@@ -186,6 +202,30 @@ func (ch balanceChange) revert(s *StateDB) {
 }
 
 func (ch balanceChange) dirtied() *common.Address {
+	return ch.account
+}
+
+func (ch pledgeChange) revert(s *StateDB) {
+	s.getStateObject(*ch.account).setPledge(ch.prev)
+}
+
+func (ch pledgeChange) dirtied() *common.Address {
+	return ch.account
+}
+
+func (ch fundsChange) revert(s *StateDB) {
+	s.getStateObject(*ch.account).setFunds(ch.prev)
+}
+
+func (ch fundsChange) dirtied() *common.Address {
+	return ch.account
+}
+
+func (ch totalLockedFundsChange) revert(s *StateDB) {
+	s.getStateObject(*ch.account).setTotalLockedFunds(ch.prev)
+}
+
+func (ch totalLockedFundsChange) dirtied() *common.Address {
 	return ch.account
 }
 

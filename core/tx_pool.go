@@ -23,6 +23,9 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"fmt"
+	"strings"
+	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
@@ -84,6 +87,11 @@ var (
 	// than some meaningful limit a user might use. This is not a consensus error
 	// making the transaction invalid, rather a DOS protection.
 	ErrOversizedData = errors.New("oversized data")
+
+
+	ErrInsufficientPledge=errors.New("insufficient funds for Pledge")
+
+	ErrInsufficientGas=errors.New(" insufficient funds for gas * price")
 )
 
 var (
@@ -599,8 +607,21 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	}
 	// Transactor should have enough funds to cover the costs
 	// cost == V + GP * GL
-	if pool.currentState.GetBalance(from).Cmp(tx.Cost()) < 0 {
+	if pool.currentState.GetBalance(from).Cmp(tx.Cost()) <0&&!strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
 		return ErrInsufficientFunds
+	}
+
+	if strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
+
+		if total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()));pool.currentState.GetBalance(from).Cmp(total)<0{
+			return ErrInsufficientGas
+		}
+
+		// tx.Value()=pool.currentState.GetBalance(from)
+		
+		if pool.currentState.GetPledge(from).Cmp(tx.Value())<0{
+			return ErrInsufficientPledge
+		}
 	}
 	// Ensure the transaction has more gas than the basic tx fee.
 	intrGas, err := IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, pool.istanbul)
@@ -610,6 +631,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	if tx.Gas() < intrGas {
 		return ErrIntrinsicGas
 	}
+
 	return nil
 }
 
@@ -628,16 +650,24 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		knownTxMeter.Mark(1)
 		return false, ErrAlreadyKnown
 	}
+
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
 	isLocal := local || pool.locals.containsTx(tx)
 
+
+
 	// If the transaction fails basic validation, discard it
 	if err := pool.validateTx(tx, isLocal); err != nil {
 		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
+
 		invalidTxMeter.Mark(1)
 		return false, err
 	}
+
+
+	fmt.Println(tx.Hash().Hex())
+
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
@@ -646,6 +676,9 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			underpricedTxMeter.Mark(1)
 			return false, ErrUnderpriced
 		}
+
+
+
 		// New transaction is better than our worse ones, make room for it.
 		// If it's a local transaction, forcibly discard all available transactions.
 		// Otherwise if we can't make enough room for new one, abort the operation.
@@ -657,6 +690,9 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			overflowedTxMeter.Mark(1)
 			return false, ErrTxPoolOverflow
 		}
+
+
+
 		// Kick out the underpriced remote transactions.
 		for _, tx := range drop {
 			log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
@@ -664,6 +700,8 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			pool.removeTx(tx.Hash(), false)
 		}
 	}
+
+	
 	// Try to replace an existing transaction in the pending pool
 	from, _ := types.Sender(pool.signer, tx) // already validated
 	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
@@ -673,6 +711,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			pendingDiscardMeter.Mark(1)
 			return false, ErrReplaceUnderpriced
 		}
+
 		// New transaction is better, replace old one
 		if old != nil {
 			pool.all.Remove(old.Hash())
@@ -680,30 +719,40 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			pendingReplaceMeter.Mark(1)
 		}
 		pool.all.Add(tx, isLocal)
+
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx)
+
 		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
 		pool.beats[from] = time.Now()
 		return old != nil, nil
 	}
+
+	
 	// New transaction isn't replacing a pending one, push into queue
 	replaced, err = pool.enqueueTx(hash, tx, isLocal, true)
 	if err != nil {
 		return false, err
 	}
 	// Mark local addresses and journal local transactions
+	
+
 	if local && !pool.locals.contains(from) {
 		log.Info("Setting new local account", "address", from)
 		pool.locals.add(from)
 		pool.priced.Removed(pool.all.RemoteToLocals(pool.locals)) // Migrate the remotes if it's marked as local first time.
 	}
+
+
+
 	if isLocal {
 		localGauge.Inc(1)
 	}
 	pool.journalTx(from, tx)
+
 
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
@@ -868,6 +917,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Accumulate all unknown transactions for deeper processing
 		news = append(news, tx)
 	}
+
 	if len(news) == 0 {
 		return errs
 	}
@@ -877,6 +927,8 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	newErrs, dirtyAddrs := pool.addTxsLocked(news, local)
 	pool.mu.Unlock()
 
+	fmt.Println(pool.queue)
+	fmt.Println(pool.pending)
 	var nilSlot = 0
 	for _, err := range newErrs {
 		for errs[nilSlot] != nil {
@@ -885,11 +937,16 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		errs[nilSlot] = err
 		nilSlot++
 	}
+	
 	// Reorg the pool internals if needed and return
 	done := pool.requestPromoteExecutables(dirtyAddrs)
+
+	fmt.Println(pool.queue)
+	fmt.Println(pool.pending)
 	if sync {
 		<-done
 	}
+	
 	return errs
 }
 
@@ -902,10 +959,13 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error,
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
 		if err == nil && !replaced {
+			
 			dirty.addTx(tx)
 		}
 	}
+
 	validTxMeter.Mark(int64(len(dirty.accounts)))
+
 	return errs, dirty
 }
 
@@ -1249,6 +1309,8 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	senderCacher.recover(pool.signer, reinject)
 	pool.addTxsLocked(reinject, false)
 
+
+
 	// Update all fork indicator by next pending block number.
 	next := new(big.Int).Add(newHead.Number, big.NewInt(1))
 	pool.istanbul = pool.chainconfig.IsIstanbul(next)
@@ -1277,7 +1339,12 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		}
 		log.Trace("Removed old queued transactions", "count", len(forwards))
 		// Drop all transactions that are too costly (low balance or out of gas)
-		drops, _ := list.Filter(pool.currentState.GetBalance(addr), pool.currentMaxGas)
+
+		// if !strings.EqualFold(hex.EncodeToString(pool.queue[accounts].txs.,hex.EncodeToString([]byte("redeem"))){
+
+		// }
+		//new gnc
+		drops, _ := list.Filter(pool.currentState.GetBalance(addr), pool.currentState.GetPledge(addr), pool.currentMaxGas)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1462,10 +1529,12 @@ func (pool *TxPool) truncateQueue() {
 // is always explicitly triggered by SetBaseFee and it would be unnecessary and wasteful
 // to trigger a re-heap is this function
 func (pool *TxPool) demoteUnexecutables() {
+
+
+
 	// Iterate over all accounts and demote any non-executable transactions
 	for addr, list := range pool.pending {
 		nonce := pool.currentState.GetNonce(addr)
-
 		// Drop all transactions that are deemed too old (low nonce)
 		olds := list.Forward(nonce)
 		for _, tx := range olds {
@@ -1473,8 +1542,9 @@ func (pool *TxPool) demoteUnexecutables() {
 			pool.all.Remove(hash)
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
-		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
-		drops, invalids := list.Filter(pool.currentState.GetBalance(addr), pool.currentMaxGas)
+		//new gnc
+		// Drop all transactions that are too costly (low balance or out of gas),or redeem value out of Pledge,and queue any invalids back for later
+		drops, invalids := list.Filter(pool.currentState.GetBalance(addr),pool.currentState.GetPledge(addr), pool.currentMaxGas)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			log.Trace("Removed unpayable pending transaction", "hash", hash)

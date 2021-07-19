@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 
@@ -493,10 +495,16 @@ func (b *SimulatedBackend) EstimateGas(ctx context.Context, call ethereum.CallMs
 		balance := b.pendingState.GetBalance(call.From) // from can't be nil
 		available := new(big.Int).Set(balance)
 		if call.Value != nil {
-			if call.Value.Cmp(available) >= 0 {
-				return 0, errors.New("insufficient funds for transfer")
-			}
-			available.Sub(available, call.Value)
+			if !strings.EqualFold(hex.EncodeToString(call.Data),hex.EncodeToString([]byte("redeem"))){
+                 if call.Value.Cmp(available) >= 0 {
+					return 0, errors.New("insufficient funds for transfer")
+				  }
+				  available.Sub(available, call.Value)
+				}else{
+					if call.Value.Cmp(b.pendingState.GetPledge(call.From) ) >= 0 {
+						return 0, errors.New("insufficient funds for Pledge")
+					  }
+				}	
 		}
 		allowance := new(big.Int).Div(available, call.GasPrice)
 		if allowance.IsUint64() && hi > allowance.Uint64() {

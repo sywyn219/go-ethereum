@@ -22,6 +22,8 @@ import (
 	"math/big"
 	"sort"
 	"time"
+	"strings"
+	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -327,18 +329,42 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 // a point in calculating all the costs or if the balance covers all. If the threshold
 // is lower than the costgas cap, the caps will be reset to a new high after removing
 // the newly invalidated transactions.
-func (l *txList) Filter(costLimit *big.Int, gasLimit uint64) (types.Transactions, types.Transactions) {
+func (l *txList) Filter(costLimit *big.Int, pledgeLimit *big.Int,gasLimit uint64) (types.Transactions, types.Transactions) {
 	// If all transactions are below the threshold, short circuit
-	if l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
-		return nil, nil
+
+  //new gnc
+	for _,tx:=range l.txs.items{
+		if !strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
+			if l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
+				return nil, nil
+			}
+		}else{
+			if l.costcap.Cmp(pledgeLimit) <= 0 && l.gascap <= gasLimit {
+				return nil, nil
+			}
+		}
+
 	}
+
 	l.costcap = new(big.Int).Set(costLimit) // Lower the caps to the thresholds
 	l.gascap = gasLimit
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
-		return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0
+
+    //new gnc
+		if !strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
+			return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0
+		}else{
+			total:=new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()));
+
+            return tx.Gas() > gasLimit || total.Cmp(costLimit) >0|| tx.Value().Cmp(pledgeLimit)>0
+		}
+		
 	})
+	
+
+
 
 	if len(removed) == 0 {
 		return nil, nil

@@ -36,6 +36,9 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+
+	bloomfilter "github.com/holiman/bloomfilter/v2"
+
 )
 
 var (
@@ -610,6 +613,13 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 			Balance  *big.Int
 			Root     common.Hash
 			CodeHash []byte
+			TotalLockedFunds *big.Int
+			Pledge   *big.Int   
+	        Funds []struct{
+				BlockNumber  *big.Int 
+				Amount  *big.Int
+			} 
+			Pid *bloomfilter.Filter 
 		}
 		if err := rlp.DecodeBytes(val, &acc); err != nil {
 			log.Crit("Invalid account encountered during snapshot creation", "err", err)
@@ -626,7 +636,7 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 				}
 				snapRecoveredAccountMeter.Mark(1)
 			} else {
-				data := SlimAccountRLP(acc.Nonce, acc.Balance, acc.Root, acc.CodeHash)
+				data := SlimAccountRLP(acc.Nonce, acc.Balance, acc.Root, acc.CodeHash,acc.TotalLockedFunds,acc.Pledge,acc.Funds,acc.Pid)
 				dataLen = len(data)
 				rawdb.WriteAccountSnapshot(batch, accountHash, data)
 				snapGeneratedAccountMeter.Mark(1)

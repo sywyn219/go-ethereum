@@ -22,6 +22,8 @@ import (
 	"sync/atomic"
 	"time"
 	"strings"
+	"encoding/hex"
+
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -87,6 +89,11 @@ type BlockContext struct {
 	Transfer TransferFunc
 
 	PledgeTransfer TransferFunc
+
+	RedeemTransfer TransferFunc
+
+	CanRedeem CanTransferFunc
+
 
 	// GetHash returns the hash corresponding to n
 	GetHash GetHashFunc
@@ -220,15 +227,20 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		return nil, gas, ErrDepth
 	}
 	// Fail if we're trying to transfer more than the available balance
-	if value.Sign() != 0 && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+	if value.Sign() != 0 && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value)&&!strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem"))) {
 		return nil, gas, ErrInsufficientBalance
 	}
+
+	if strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem")))&&!evm.Context.CanRedeem(evm.StateDB, caller.Address(), value){
+		return nil, gas, ErrInsufficientPledge
+	}
+
 	snapshot := evm.StateDB.Snapshot()
 	p, isPrecompile := evm.precompile(addr)
 
 	if !evm.StateDB.Exist(addr) {
 		if !isPrecompile && evm.chainRules.IsEIP158 && value.Sign() == 0 {
-			// Calling a non existing account, don't do anything, but ping the tracer
+			// Calling a non existing account, don't do anything, but ping the tracer 
 			if evm.Config.Debug && evm.depth == 0 {
 				evm.Config.Tracer.CaptureStart(evm, caller.Address(), addr, false, input, gas, value)
 				evm.Config.Tracer.CaptureEnd(ret, 0, 0, nil)
@@ -237,9 +249,10 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 		evm.StateDB.CreateAccount(addr)
 	}
-
-	if strings.EqualFold(string(input),"Pledge")&&(caller.Address()==addr){
+	if len(input)>6&&strings.EqualFold(hex.EncodeToString(input[:6]),hex.EncodeToString([]byte("pledge")))&&(caller.Address()==addr){
 		evm.Context.PledgeTransfer(evm.StateDB, caller.Address(), addr, value)
+	}else if strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem")))&&(caller.Address()==addr){
+		evm.Context.RedeemTransfer(evm.StateDB, caller.Address(), addr, value)
 	}else{
 		evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
 	}
@@ -252,6 +265,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}(gas, time.Now())
 	}
 
+	
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
@@ -304,8 +318,12 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	// Note although it's noop to transfer X ether to caller itself. But
 	// if caller doesn't have enough balance, it would be an error to allow
 	// over-charging itself. So the check here is necessary.
-	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) &&!strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem"))){
 		return nil, gas, ErrInsufficientBalance
+	}
+
+	if strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem")))&&!evm.Context.CanRedeem(evm.StateDB, caller.Address(), value){
+		return nil, gas, ErrInsufficientPledge
 	}
 	var snapshot = evm.StateDB.Snapshot()
 

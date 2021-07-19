@@ -22,6 +22,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
+
+	bloomfilter "github.com/holiman/bloomfilter/v2"
+
 )
 
 // Account is a modified version of a state.Account, where the root is replaced
@@ -33,13 +36,31 @@ type Account struct {
 	Balance  *big.Int
 	Root     []byte
 	CodeHash []byte
+
+	Pledge   *big.Int    //Balance of miners pledged
+
+
+	TotalLockedFunds   *big.Int     //lock coinbase
+	
+	Funds []struct{
+		BlockNumber  *big.Int 
+	    Amount  *big.Int
+	}   //Balance of miners Fund by BlockNumber
+
+	Pid *bloomfilter.Filter   //Pid by miner
 }
 
+
+
 // SlimAccount converts a state.Account content into a slim snapshot account
-func SlimAccount(nonce uint64, balance *big.Int, root common.Hash, codehash []byte) Account {
+func SlimAccount(nonce uint64, balance *big.Int, root common.Hash, codehash []byte,totalLockedFunds *big.Int,pledge *big.Int,funds []struct{BlockNumber *big.Int;Amount *big.Int},pid *bloomfilter.Filter) Account {
 	slim := Account{
 		Nonce:   nonce,
 		Balance: balance,
+		TotalLockedFunds: totalLockedFunds,
+		Pledge: pledge,
+		Funds: funds,
+		Pid:pid,
 	}
 	if root != emptyRoot {
 		slim.Root = root[:]
@@ -52,8 +73,8 @@ func SlimAccount(nonce uint64, balance *big.Int, root common.Hash, codehash []by
 
 // SlimAccountRLP converts a state.Account content into a slim snapshot
 // version RLP encoded.
-func SlimAccountRLP(nonce uint64, balance *big.Int, root common.Hash, codehash []byte) []byte {
-	data, err := rlp.EncodeToBytes(SlimAccount(nonce, balance, root, codehash))
+func SlimAccountRLP(nonce uint64, balance *big.Int, root common.Hash, codehash []byte,totalLockedFunds *big.Int,pledge *big.Int,funds []struct{BlockNumber *big.Int;Amount *big.Int},pid *bloomfilter.Filter) []byte {
+	data, err := rlp.EncodeToBytes(SlimAccount(nonce, balance, root, codehash,totalLockedFunds,pledge,funds,pid))
 	if err != nil {
 		panic(err)
 	}

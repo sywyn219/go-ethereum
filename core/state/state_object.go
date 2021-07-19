@@ -27,6 +27,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
+
+	bloomfilter "github.com/holiman/bloomfilter/v2"
+
 )
 
 var emptyCodeHash = crypto.Keccak256(nil)
@@ -105,13 +108,24 @@ type Account struct {
 	Root     common.Hash // merkle root of the storage trie
 	CodeHash []byte
 	Pledge   *big.Int    //Balance of miners pledged
-	VestingFunds []vestingFund    //Balance of miners Fund by BlockNumber
+
+
+	TotalLockedFunds   *big.Int     //lock coinbase
+	
+	Funds []struct{
+		BlockNumber  *big.Int 
+	    Amount  *big.Int
+	}   //Balance of miners Fund by BlockNumber
+
+	Pid *bloomfilter.Filter   //Pid by miner
+
 }
 
-type vestingFund struct {
-	BlockNumber  *big.Int 
-	Amount  *big.Int
-}
+// type VestingFund struct {
+// 	BlockNumber  *big.Int 
+// 	Amount  *big.Int
+// }
+
 // newObject creates a state object.
 func newObject(db *StateDB, address common.Address, data Account) *stateObject {
 	if data.Balance == nil {
@@ -120,6 +134,10 @@ func newObject(db *StateDB, address common.Address, data Account) *stateObject {
 
 	if data.Pledge == nil {
 		data.Pledge = new(big.Int)
+	}
+
+	if data.TotalLockedFunds==nil{
+		data.TotalLockedFunds=new(big.Int)
 	}
 	if data.CodeHash == nil {
 		data.CodeHash = emptyCodeHash
@@ -459,14 +477,25 @@ func (s *stateObject) SetBalance(amount *big.Int) {
 
 func (s *stateObject) setBalance(amount *big.Int) {
 	s.data.Balance = amount
+
+	fmt.Println("s.data.Balance",s.data.Balance)
+}
+
+func (s *stateObject) SetFunds(funds []struct{BlockNumber *big.Int; Amount *big.Int}) {
+	s.db.journal.append(fundsChange{
+		account: &s.address,
+		prev:    funds,
+	})
+	s.setFunds(funds)
+}
+
+func (s *stateObject) setFunds(funds []struct{BlockNumber *big.Int; Amount *big.Int}) {
+	s.data.Funds = funds
 }
 
 
 // AddPledge adds amount to Pledge's balance.
-// It is used to add funds to the destination account of a transfer.
 func (s *stateObject) AddPledge(amount *big.Int) {
-	// EIP161: We must check emptiness for the objects such that the account
-	// clearing (0,0,0 objects) can take effect.
 	if amount.Sign() == 0 {
 		if s.empty() {
 			s.touch()
@@ -477,8 +506,6 @@ func (s *stateObject) AddPledge(amount *big.Int) {
 }
 
 
-// SubBalance removes amount from s's balance.
-// It is used to remove funds from the origin account of a transfer.
 func (s *stateObject) SubPledge(amount *big.Int) {
 	if amount.Sign() == 0 {
 		return
@@ -488,9 +515,9 @@ func (s *stateObject) SubPledge(amount *big.Int) {
 
 
 func (s *stateObject) SetPledge(amount *big.Int) {
-	s.db.journal.append(balanceChange{
+	s.db.journal.append(pledgeChange{
 		account: &s.address,
-		prev:    new(big.Int).Set(s.data.Balance),
+		prev:    new(big.Int).Set(s.data.Pledge),
 	})
 	s.setPledge(amount)
 }
@@ -499,6 +526,39 @@ func (s *stateObject) setPledge(amount *big.Int) {
 	s.data.Pledge = amount
 }
 
+func (s *stateObject) AddTotalLockedFunds(amount *big.Int) {
+	// EIP161: We must check emptiness for the objects such that the account
+	// clearing (0,0,0 objects) can take effect.
+	if amount.Sign() == 0 {
+		if s.empty() {
+			s.touch()
+		}
+		return
+	}
+	s.SetTotalLockedFunds(new(big.Int).Add(s.TotalLockedFunds(), amount))
+}
+
+
+func (s *stateObject) SubTotalLockedFunds(amount *big.Int) {
+	if amount.Sign() == 0 {
+		return
+	}
+	s.SetTotalLockedFunds(new(big.Int).Sub(s.TotalLockedFunds(), amount))
+}
+
+
+func (s *stateObject) SetTotalLockedFunds(amount *big.Int) {
+	s.db.journal.append(totalLockedFundsChange{
+		account: &s.address,
+		prev:    new(big.Int).Set(s.data.TotalLockedFunds),
+	})
+	s.setTotalLockedFunds(amount)
+}
+
+func (s *stateObject) setTotalLockedFunds(amount *big.Int) {
+	s.data.TotalLockedFunds = amount
+
+}
 
 
 // Return the gas back to the origin. Used by the Virtual machine or Closures
@@ -597,13 +657,24 @@ func (s *stateObject) Balance() *big.Int {
 	return s.data.Balance
 }
 
+func (s *stateObject) TotalLockedFunds() *big.Int {
+	return s.data.TotalLockedFunds
+}
+
+func (s *stateObject) Funds() []struct{BlockNumber *big.Int; Amount *big.Int} {
+	return s.data.Funds
+}
+
 func (s *stateObject) Pledge() *big.Int {
 	return s.data.Pledge
 }
 
+
+
 func (s *stateObject) Nonce() uint64 {
 	return s.data.Nonce
 }
+
 
 // Never called, but must be present to allow stateObject to be used
 // as a vm.Account interface that also satisfies the vm.ContractRef
@@ -611,3 +682,7 @@ func (s *stateObject) Nonce() uint64 {
 func (s *stateObject) Value() *big.Int {
 	panic("Value on stateObject should never be called")
 }
+
+
+
+

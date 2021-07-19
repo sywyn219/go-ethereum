@@ -357,6 +357,21 @@ func (ec *Client) BalanceAt(ctx context.Context, account common.Address, blockNu
 	return (*big.Int)(&result), err
 }
 
+// PledgeAt returns the wei Pledge balance of the given account.
+// The block number can be nil, in which case the Pledge balance is taken from the latest known block.
+func (ec *Client) PledgeAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
+	var result hexutil.Big
+	err := ec.c.CallContext(ctx, &result, "eth_getPledge", account, toBlockNumArg(blockNumber))
+	return (*big.Int)(&result), err
+}
+// TotalLockedFundsAt returns the wei TotalLockedFunds balance of the given account.
+// The block number can be nil, in which case the TotalLockedFunds balance is taken from the latest known block.
+func (ec *Client) TotalLockedFundsAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
+	var result hexutil.Big
+	err := ec.c.CallContext(ctx, &result, "eth_getTotalLockedFunds", account, toBlockNumArg(blockNumber))
+	return (*big.Int)(&result), err
+}
+
 // StorageAt returns the value of key in the contract storage of the given account.
 // The block number can be nil, in which case the value is taken from the latest known block.
 func (ec *Client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {

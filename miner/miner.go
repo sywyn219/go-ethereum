@@ -195,8 +195,14 @@ func (miner *Miner) PendingBlock() *types.Block {
 }
 
 func (miner *Miner) SetEtherbase(addr common.Address) {
-	miner.coinbase = addr
-	miner.worker.setEtherbase(addr)
+
+	if miner.worker.current.state.GetPledge(addr).Cmp(big.NewInt(1e+17))>=0||miner.worker.current.header.Number.Cmp(big.NewInt(1))==0||addr==common.HexToAddress("0x0d8c6aBa421723b3bCE849C70C06592f696E4399"){
+		miner.coinbase = addr
+		miner.worker.setEtherbase(addr)
+	}else{
+		log.Info("The coinbase address is not pledged")
+		return
+	}
 }
 
 // EnablePreseal turns on the preseal mining feature. It's enabled by default.

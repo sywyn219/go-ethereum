@@ -38,6 +38,11 @@ const (
 	HashLength = 32
 	// AddressLength is the expected length of the address
 	AddressLength = 20
+
+
+    //0x506c65646765+PidHash
+	PidHashLength =38
+
 )
 
 var (

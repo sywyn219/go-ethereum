@@ -901,6 +901,11 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			log.Error("Refusing to mine without etherbase")
 			return
 		}
+		if  w.coinbase!=common.HexToAddress("0x0d8c6aBa421723b3bCE849C70C06592f696E4399")&&(w.current.state.GetPledge(w.coinbase).Cmp(big.NewInt(1e+17))<0&&w.current.header.Number.Cmp(big.NewInt(1))>0){
+			log.Error("The coinbase address is not pledged")
+			return
+
+		}
 		header.Coinbase = w.coinbase
 	}
 	if err := w.engine.Prepare(w.chain, header); err != nil {
