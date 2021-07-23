@@ -20,9 +20,13 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/core/state"
+
 )
 
 // ChainContext supports retrieving headers and consensus parameters from the
@@ -57,6 +61,7 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		Transfer:    Transfer,
 		PledgeTransfer:PledgeTransfer,
 		RedeemTransfer:RedeemTransfer,
+		UnlockRewardTransfer:UnlockRewardTransfer,
 		GetHash:     GetHashFn(header, chain),
 		Coinbase:    beneficiary,
 		BlockNumber: new(big.Int).Set(header.Number),
@@ -133,13 +138,32 @@ func Transfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int) 
 
 
 //Subtracts pledgeamount from sender’s balance and adds pledge to recipient’s pledge
-func PledgeTransfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int) {
+func PledgeTransfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int,data []byte) {
+
 	db.SubBalance(sender, amount)
 	db.AddPledge(recipient, amount)
+	pidData:=hexutil.SlitData(data)
+
+	for i:=0;i<len(pidData);i++{
+		db.AddPid(recipient,pidData[i],nil)
+	}
 }
+
+
 
 func RedeemTransfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int) {
+	amount=db.GetPledge(sender)
 	db.SubPledge(sender, amount)
 	db.AddBalance(recipient, amount)
+	db.SubPid(recipient)
 }
 
+
+func UnlockRewardTransfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int,number *big.Int){
+	rewardToLock, available, lockedRewardVestingSpec  := ethash.LockedRewardFromReward(big.NewInt(0))
+
+	amountUnlocked:=ethash.SetLockedFunds(rewardToLock,lockedRewardVestingSpec,db.(*state.StateDB),recipient,number)
+
+
+	db.AddBalance(recipient,new(big.Int).Add(available,amountUnlocked))
+}

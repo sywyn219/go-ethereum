@@ -331,7 +331,7 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 // the newly invalidated transactions.
 func (l *txList) Filter(costLimit *big.Int, pledgeLimit *big.Int,gasLimit uint64) (types.Transactions, types.Transactions) {
 	// If all transactions are below the threshold, short circuit
-
+	
   //new gnc
 	for _,tx:=range l.txs.items{
 		if !strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
@@ -353,6 +353,7 @@ func (l *txList) Filter(costLimit *big.Int, pledgeLimit *big.Int,gasLimit uint64
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
 
     //new gnc
+
 		if !strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
 			return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0
 		}else{

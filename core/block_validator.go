@@ -19,6 +19,8 @@ package core
 import (
 	"fmt"
 	"math/big"
+	"strings"
+	"encoding/hex"
 
     "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -26,6 +28,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+
 )
 
 // BlockValidator is responsible for validating block headers, uncles and
@@ -67,6 +71,35 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != header.TxHash {
 		return fmt.Errorf("transaction root hash mismatch: have %x, want %x", hash, header.TxHash)
 	}
+
+	
+	//new gnc
+
+	transactions:=block.Transactions()
+		if len(transactions)>0{
+			for i:=0;i<len(transactions);i++{
+				msg, err := transactions[i].AsMessage(types.NewEIP155Signer(v.config.ChainID),nil)
+				if err != nil {
+					fmt.Errorf("getFromErr",err)
+				}
+				var snapdata []byte
+				if msg.Data()==nil{
+					snapdata=[]byte{}
+				}else{
+					snapdata=msg.Data()
+				}
+				if len(snapdata)>6&&strings.EqualFold(hex.EncodeToString(snapdata[:6]),hex.EncodeToString([]byte("pledge"))){
+
+					pidData:=hexutil.SlitData(snapdata)
+		
+				
+					pledgeValue:=new(big.Int).Mul(new(big.Int).SetInt64(int64(len(pidData))),common.PledgeBase)
+					if msg.Value().Cmp(pledgeValue)<0{
+						return fmt.Errorf("invalid pledge tx value (remote: %v local: %v)", msg.Value(), pledgeValue)
+					}
+				}
+			}
+		}
 	if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
 		if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
 			return consensus.ErrUnknownAncestor

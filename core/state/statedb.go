@@ -33,6 +33,9 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+
+	bloomfilter "github.com/holiman/bloomfilter/v2"
+
 )
 
 type revision struct {
@@ -278,13 +281,20 @@ func (s *StateDB) GetFunds(addr common.Address) []struct{BlockNumber *big.Int; A
 }
 
 
-// GetBalance retrieves the balance from the given address or 0 if object not found
 func (s *StateDB) GetPledge(addr common.Address) *big.Int {
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Pledge()
 	}
 	return common.Big0
+}
+
+func (s *StateDB) VerifyPid(addr common.Address,pid []byte) bool {
+	stateObject := s.getStateObject(addr)
+	if stateObject != nil {
+		return stateObject.Pid().Contains(stateBloomHasher(pid))
+	}
+	return false
 }
 
 func (s *StateDB) GetNonce(addr common.Address) uint64 {
@@ -483,6 +493,31 @@ func (s *StateDB) SetTotalLockedFunds(addr common.Address, amount *big.Int) {
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetTotalLockedFunds(amount)
+	}
+}
+
+func (s *StateDB) AddPid(addr common.Address, key []byte, value []byte) {
+	stateObject := s.GetOrNewStateObject(addr)
+
+	if stateObject != nil {
+		stateObject.AddPid(key,value)
+	}
+}
+
+func (s *StateDB) SubPid(addr common.Address) {
+	stateObject := s.GetOrNewStateObject(addr)
+
+	if stateObject != nil {
+		stateObject.SubPid()
+	}
+}
+
+func (s *StateDB) SetPid(addr common.Address,pid *bloomfilter.Filter) {
+	stateObject := s.GetOrNewStateObject(addr)
+
+	if stateObject != nil {
+
+		stateObject.SetPid(pid)
 	}
 }
 

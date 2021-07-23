@@ -670,7 +670,7 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 	rewardToLock, available, lockedRewardVestingSpec  := LockedRewardFromReward(reward)
 
 	fmt.Println("lockedRewardVestingSpec",lockedRewardVestingSpec)
-	amountUnlocked:=SetLockedFunds(rewardToLock,lockedRewardVestingSpec,state,header)
+	amountUnlocked:=SetLockedFunds(rewardToLock,lockedRewardVestingSpec,state,header.Coinbase,header.Number)
 
 	fmt.Println("amountUnlocked",amountUnlocked)
 
@@ -717,15 +717,15 @@ func LockedRewardFromReward(reward *big.Int) (*big.Int, *big.Int, *VestSpec) {
 }
 
 //Add locked coins
-func SetLockedFunds(vestingSum *big.Int, spec *VestSpec,self *state.StateDB,header *types.Header) (vested *big.Int) {
+func SetLockedFunds(vestingSum *big.Int, spec *VestSpec,self *state.StateDB,coinbase common.Address,number *big.Int) (vested *big.Int) {
 	if vestingSum.Cmp(Zero()) < 0 {
 		return Zero()
 	}
 	
 	//Calculate unlocked coins
 
-	amountUnlocked := self.UnlockVestedFunds(header.Number,header.Coinbase)
-	lockedFunds:=self.GetTotalLockedFunds(header.Coinbase)
+	amountUnlocked := self.UnlockVestedFunds(number,coinbase)
+	lockedFunds:=self.GetTotalLockedFunds(coinbase)
 
 
 	
@@ -734,10 +734,10 @@ func SetLockedFunds(vestingSum *big.Int, spec *VestSpec,self *state.StateDB,head
 	}
 
 
-	self.SubTotalLockedFunds(header.Coinbase, amountUnlocked)
+	self.SubTotalLockedFunds(coinbase, amountUnlocked)
 
 
-	addLockedFunds(header.Number, vestingSum, spec,self,header.Coinbase)
+	addLockedFunds(number, vestingSum, spec,self,coinbase)
 
 	return amountUnlocked
 }

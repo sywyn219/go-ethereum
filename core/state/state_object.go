@@ -22,11 +22,14 @@ import (
 	"io"
 	"math/big"
 	"time"
+	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
+
+	"encoding/binary"
 
 	bloomfilter "github.com/holiman/bloomfilter/v2"
 
@@ -107,6 +110,8 @@ type Account struct {
 	Balance  *big.Int
 	Root     common.Hash // merkle root of the storage trie
 	CodeHash []byte
+
+
 	Pledge   *big.Int    //Balance of miners pledged
 
 
@@ -121,10 +126,7 @@ type Account struct {
 
 }
 
-// type VestingFund struct {
-// 	BlockNumber  *big.Int 
-// 	Amount  *big.Int
-// }
+
 
 // newObject creates a state object.
 func newObject(db *StateDB, address common.Address, data Account) *stateObject {
@@ -144,6 +146,10 @@ func newObject(db *StateDB, address common.Address, data Account) *stateObject {
 	}
 	if data.Root == (common.Hash{}) {
 		data.Root = emptyRoot
+	}
+
+	if data.Pid==nil{
+		data.Pid=newStateBloomWithSize(8)
 	}
 	return &stateObject{
 		db:             db,
@@ -484,7 +490,7 @@ func (s *stateObject) setBalance(amount *big.Int) {
 func (s *stateObject) SetFunds(funds []struct{BlockNumber *big.Int; Amount *big.Int}) {
 	s.db.journal.append(fundsChange{
 		account: &s.address,
-		prev:    funds,
+		prev:    s.data.Funds,
 	})
 	s.setFunds(funds)
 }
@@ -527,8 +533,6 @@ func (s *stateObject) setPledge(amount *big.Int) {
 }
 
 func (s *stateObject) AddTotalLockedFunds(amount *big.Int) {
-	// EIP161: We must check emptiness for the objects such that the account
-	// clearing (0,0,0 objects) can take effect.
 	if amount.Sign() == 0 {
 		if s.empty() {
 			s.touch()
@@ -557,10 +561,40 @@ func (s *stateObject) SetTotalLockedFunds(amount *big.Int) {
 
 func (s *stateObject) setTotalLockedFunds(amount *big.Int) {
 	s.data.TotalLockedFunds = amount
+}
 
+func (s *stateObject) AddPid(key []byte, value []byte) error{
+	if len(key) != PidHashLength {
+		return errors.New("invalid PidHashLength")
+	}
+	s.data.Pid.Add(stateBloomHasher(key))
+	s.SetPid(s.data.Pid)
+	return nil
 }
 
 
+func (s *stateObject) SubPid() {
+	bloom, err := bloomfilter.New(8*1024*1024*8, 4)
+	if err != nil {
+	    panic("err")
+	}
+	s.SetPid(bloom)
+}
+
+
+func (s *stateObject) SetPid(pid *bloomfilter.Filter) error {
+	s.db.journal.append(pidChange{
+		account: &s.address,
+		prev:   s.data.Pid,
+	})
+	
+	s.setPid(pid)
+	return nil
+}
+
+func (s *stateObject) setPid(pid *bloomfilter.Filter){
+	s.data.Pid=pid
+}
 // Return the gas back to the origin. Used by the Virtual machine or Closures
 func (s *stateObject) ReturnGas(gas *big.Int) {}
 
@@ -669,6 +703,9 @@ func (s *stateObject) Pledge() *big.Int {
 	return s.data.Pledge
 }
 
+func (s *stateObject) Pid() *bloomfilter.Filter {
+	return s.data.Pid
+}
 
 
 func (s *stateObject) Nonce() uint64 {
@@ -684,5 +721,29 @@ func (s *stateObject) Value() *big.Int {
 }
 
 
+type stateBloomHasher []byte
 
+var PidHashLength = 32
+
+func (f stateBloomHasher) Write(p []byte) (n int, err error) { panic("not implemented") }
+func (f stateBloomHasher) Sum(b []byte) []byte               { panic("not implemented") }
+func (f stateBloomHasher) Reset()                            { panic("not implemented") }
+func (f stateBloomHasher) BlockSize() int                    { panic("not implemented") }
+func (f stateBloomHasher) Size() int                         { return 8 }
+func (f stateBloomHasher) Sum64() uint64                     { return binary.BigEndian.Uint64(f) }
+
+
+func newStateBloomWithSize(size uint64)(*bloomfilter.Filter) {
+	bloom, err := bloomfilter.New(size*1024*1024*8, 4)
+	if err != nil {
+	    panic("err")
+	}
+	return bloom
+}
+
+
+
+func (s *stateObject) GetPid(key []byte) (bool) {
+	return s.data.Pid.Contains(stateBloomHasher(key))
+}
 

@@ -596,6 +596,27 @@ func (s *PublicBlockChainAPI) GetTotalLockedFunds(ctx context.Context, address c
 	return (*hexutil.Big)(state.GetTotalLockedFunds(address)), state.Error()
 }
 
+func (s *PublicBlockChainAPI) VerifyPid(ctx context.Context, address common.Address, pidHex string, blockNrOrHash rpc.BlockNumberOrHash) (bool, error) {
+	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return false, err
+	}
+	fmt.Println(pidHex)
+	if strings.Contains(pidHex,"0x"){
+		pidHex=pidHex[2:]
+	}
+
+	fmt.Println(pidHex)
+	
+	key,err:=hex.DecodeString(pidHex)
+	if err!=nil{
+		return false ,err
+	}
+
+	
+	return state.VerifyPid(address,key), state.Error()
+}
+
 // Result structs for GetProof
 type AccountResult struct {
 	Address      common.Address  `json:"address"`
@@ -995,7 +1016,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		balance := state.GetBalance(*args.From) // from can't be nil
 		available := new(big.Int).Set(balance)
 		if args.Value != nil {
-			if !strings.EqualFold(args.Data.String(),"0x"+hex.EncodeToString([]byte("redeem"))){
+			if !strings.EqualFold(hex.EncodeToString(args.data()),"0x"+hex.EncodeToString([]byte("redeem"))){
 				if args.Value.ToInt().Cmp(available) >= 0 {
 					return 0, errors.New("insufficient funds for transfer")
 				}
@@ -1005,7 +1026,6 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 					return 0, errors.New("insufficient funds for Pledge")
 				}
 			}
-			
 		}
 		allowance := new(big.Int).Div(available, args.GasPrice.ToInt())
 

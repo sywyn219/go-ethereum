@@ -20,6 +20,8 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	bloomfilter "github.com/holiman/bloomfilter/v2"
+
 )
 
 // journalEntry is a modification entry in the state change journal that can be
@@ -118,6 +120,12 @@ type (
 	fundsChange struct {
 		account *common.Address
 		prev    []struct{BlockNumber *big.Int; Amount *big.Int}
+	}
+
+
+	pidChange struct {
+		account *common.Address
+		prev    *bloomfilter.Filter
 	}
 
 	nonceChange struct {
@@ -226,6 +234,15 @@ func (ch totalLockedFundsChange) revert(s *StateDB) {
 }
 
 func (ch totalLockedFundsChange) dirtied() *common.Address {
+	return ch.account
+}
+
+
+func (ch pidChange)revert(s *StateDB){
+	s.getStateObject(*ch.account).setPid(ch.prev)
+}
+
+func (ch pidChange) dirtied() *common.Address {
 	return ch.account
 }
 

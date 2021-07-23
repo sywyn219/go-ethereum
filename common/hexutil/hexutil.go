@@ -238,3 +238,19 @@ func mapError(err error) error {
 	}
 	return err
 }
+
+
+//new gnc
+func SlitData(data []byte)[][]byte{
+    var pidData=data[6:]
+	var lenData=len(data[6:])/32
+	var dataList=[][]byte{}
+	for i:=0;i<lenData;i++{
+		start:=i*32
+		stop:=i*32+32
+       dataList=append(dataList,pidData[start:stop])
+	}
+
+	return dataList
+
+}

@@ -105,7 +105,7 @@ func (tx *LegacyTx) to() *common.Address    { return tx.To }
 
 
 //new gnc
-func (tx *LegacyTx) SetValue(value *big.Int) *big.Int { return new(big.Int).Set(value) }
+func (tx *LegacyTx) SetValue(value *big.Int){ tx.Value=value}
 
 func (tx *LegacyTx) rawSignatureValues() (v, r, s *big.Int) {
 	return tx.V, tx.R, tx.S

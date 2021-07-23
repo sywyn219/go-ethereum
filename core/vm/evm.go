@@ -40,6 +40,9 @@ type (
 	CanTransferFunc func(StateDB, common.Address, *big.Int) bool
 	// TransferFunc is the signature of a transfer function
 	TransferFunc func(StateDB, common.Address, common.Address, *big.Int)
+	PledgeFunc func(StateDB, common.Address, common.Address, *big.Int,[]byte)
+
+	UnlockRewardTransferFunc func(StateDB, common.Address, common.Address, *big.Int,*big.Int)
 	// GetHashFunc returns the n'th block hash in the blockchain
 	// and is used by the BLOCKHASH EVM op code.
 	GetHashFunc func(uint64) common.Hash
@@ -88,9 +91,11 @@ type BlockContext struct {
 	// Transfer transfers ether from one account to the other
 	Transfer TransferFunc
 
-	PledgeTransfer TransferFunc
+	PledgeTransfer PledgeFunc
 
 	RedeemTransfer TransferFunc
+
+	UnlockRewardTransfer UnlockRewardTransferFunc
 
 	CanRedeem CanTransferFunc
 
@@ -226,12 +231,21 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
+
+
+	//new gnc
+	var snapdata []byte
+	if input==nil{
+		snapdata=[]byte{}
+	}else{
+		snapdata=input
+	}
 	// Fail if we're trying to transfer more than the available balance
-	if value.Sign() != 0 && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value)&&!strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem"))) {
+	if value.Sign() != 0 && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value)&&!strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem"))) {
 		return nil, gas, ErrInsufficientBalance
 	}
 
-	if strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem")))&&!evm.Context.CanRedeem(evm.StateDB, caller.Address(), value){
+	if strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem")))&&!evm.Context.CanRedeem(evm.StateDB, caller.Address(), value){
 		return nil, gas, ErrInsufficientPledge
 	}
 
@@ -249,10 +263,13 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 		evm.StateDB.CreateAccount(addr)
 	}
-	if len(input)>6&&strings.EqualFold(hex.EncodeToString(input[:6]),hex.EncodeToString([]byte("pledge")))&&(caller.Address()==addr){
-		evm.Context.PledgeTransfer(evm.StateDB, caller.Address(), addr, value)
-	}else if strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem")))&&(caller.Address()==addr){
+
+	if len(snapdata)>6&&strings.EqualFold(hex.EncodeToString(snapdata[:6]),hex.EncodeToString([]byte("pledge")))&&(caller.Address()==addr){
+		evm.Context.PledgeTransfer(evm.StateDB, caller.Address(), addr, value,input)
+	}else if strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem")))&&(caller.Address()==addr){
 		evm.Context.RedeemTransfer(evm.StateDB, caller.Address(), addr, value)
+	}else if strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("unlockReward")))&&(caller.Address()==addr){
+		evm.Context.UnlockRewardTransfer(evm.StateDB, caller.Address(), addr, value,evm.Context.BlockNumber)
 	}else{
 		evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
 	}
@@ -265,7 +282,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}(gas, time.Now())
 	}
 
-	
+
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
@@ -318,11 +335,19 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	// Note although it's noop to transfer X ether to caller itself. But
 	// if caller doesn't have enough balance, it would be an error to allow
 	// over-charging itself. So the check here is necessary.
-	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) &&!strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem"))){
+
+	//new gnc
+	var snapdata []byte
+	if input==nil{
+		snapdata=[]byte{}
+	}else{
+		snapdata=input
+	}
+	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) &&!strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem"))){
 		return nil, gas, ErrInsufficientBalance
 	}
 
-	if strings.EqualFold(hex.EncodeToString(input),hex.EncodeToString([]byte("redeem")))&&!evm.Context.CanRedeem(evm.StateDB, caller.Address(), value){
+	if strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem")))&&!evm.Context.CanRedeem(evm.StateDB, caller.Address(), value){
 		return nil, gas, ErrInsufficientPledge
 	}
 	var snapshot = evm.StateDB.Snapshot()

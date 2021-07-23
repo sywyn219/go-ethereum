@@ -293,14 +293,21 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	}
 	st.gas -= gas
 
+	var snapdata []byte
+	if msg.Data()==nil{
+		snapdata=[]byte{}
+	}else{
+		snapdata=msg.Data()
+	}
+
 	// Check clause 6
-	if msg.Value().Sign() > 0 && !strings.EqualFold(hex.EncodeToString(msg.Data()),hex.EncodeToString([]byte("redeem")))&&!st.evm.Context.CanTransfer(st.state, msg.From(), msg.Value()) {
+	if msg.Value().Sign() > 0 &&!strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem")))&&!st.evm.Context.CanTransfer(st.state, msg.From(), msg.Value()) {
 		return nil, fmt.Errorf("%w: address %v", ErrInsufficientFundsForTransfer, msg.From().Hex())
 	}
     
 
-
-	if strings.EqualFold(hex.EncodeToString(msg.Data()),hex.EncodeToString([]byte("redeem")))&&!st.evm.Context.CanRedeem(st.state, msg.From(), msg.Value()) {
+   //new gnc
+	if msg.Data()!=nil&&strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem")))&&!st.evm.Context.CanRedeem(st.state, msg.From(), msg.Value()) {
 		return nil, fmt.Errorf("%w: address %v", ErrInsufficientFundsForPledge, msg.From().Hex())
 	}
 

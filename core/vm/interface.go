@@ -37,6 +37,10 @@ type StateDB interface {
 	GetPledge(common.Address) *big.Int
 
 
+	AddPid(addr common.Address, key []byte, value []byte)
+	SubPid(addr common.Address)
+
+
 	GetNonce(common.Address) uint64
 	SetNonce(common.Address, uint64)
 

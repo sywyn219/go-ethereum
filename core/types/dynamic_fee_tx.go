@@ -97,7 +97,7 @@ func (tx *DynamicFeeTx) to() *common.Address    { return tx.To }
 
 
 //new gnc
-func (tx *DynamicFeeTx) SetValue(value *big.Int) *big.Int { return new(big.Int).Set(value) }
+func (tx *DynamicFeeTx) SetValue(value *big.Int){ tx.Value=value}
 
 
 func (tx *DynamicFeeTx) rawSignatureValues() (v, r, s *big.Int) {

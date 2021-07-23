@@ -2258,6 +2258,18 @@ var isAddress = function (address) {
     }
 };
 
+
+// var isPidHex = function (pidHex) {
+//     if (!/^(0x)?[0-9a-f]{64}$/i.test(pidHex)) {
+       
+//         return false;
+//     } else if (/^(0x)?[0-9a-f]{64}$/.test(pidHex) || /^(0x)?[0-9A-F]{40}$/.test(pidHex)) {
+       
+//         return true;
+//     } 
+//     return false
+// };
+
 /**
  * Checks if the given string is a checksummed address
  *
@@ -3941,6 +3953,15 @@ var inputAddressFormatter = function (address) {
     throw new Error('invalid address');
 };
 
+var inputPidHexFormatter = function (pidHex) {
+
+    pidHex=pidHex.replace('0x','')
+
+
+    return '0x' + pidHex;
+    // throw new Error('invalid PidHex');
+};
+
 
 var outputSyncingFormatter = function(result) {
     if (!result) {
@@ -3964,6 +3985,7 @@ module.exports = {
     inputCallFormatter: inputCallFormatter,
     inputTransactionFormatter: inputTransactionFormatter,
     inputAddressFormatter: inputAddressFormatter,
+    inputPidHexFormatter: inputPidHexFormatter,
     inputPostFormatter: inputPostFormatter,
     outputBigNumberFormatter: outputBigNumberFormatter,
     outputTransactionFormatter: outputTransactionFormatter,
@@ -5293,12 +5315,23 @@ var methods = function () {
         inputFormatter: [formatters.inputAddressFormatter, formatters.inputDefaultBlockNumberFormatter],
         outputFormatter: formatters.outputBigNumberFormatter
     });
+
+
+
     var getTotalLockedFunds = new Method({
         name: 'getTotalLockedFunds',
         call: 'eth_getTotalLockedFunds',
         params: 2,
         inputFormatter: [formatters.inputAddressFormatter, formatters.inputDefaultBlockNumberFormatter],
         outputFormatter: formatters.outputBigNumberFormatter
+    });
+
+    var verifyPid = new Method({
+        name: 'verifyPid',
+        call: 'eth_verifyPid',
+        params: 3,
+        inputFormatter: [formatters.inputAddressFormatter,formatters.inputPidHexFormatter,formatters.inputDefaultBlockNumberFormatter],
+        // outputFormatter: formatters.outputBigNumberFormatter
     });
 
     var getStorageAt = new Method({
@@ -5461,6 +5494,7 @@ var methods = function () {
         getBalance,
         getPledge,
         getTotalLockedFunds,
+        verifyPid,
         getStorageAt,
         getCode,
         getBlock,

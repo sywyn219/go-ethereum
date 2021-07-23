@@ -23,11 +23,11 @@ import (
 	"sort"
 	"sync"
 	"time"
-	"fmt"
 	"strings"
 	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -607,22 +607,44 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	}
 	// Transactor should have enough funds to cover the costs
 	// cost == V + GP * GL
-	if pool.currentState.GetBalance(from).Cmp(tx.Cost()) <0&&!strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
+
+
+	//new gnc
+	var snapdata []byte
+	if tx.Data()==nil{
+		snapdata=[]byte{}
+	}else{
+		snapdata=tx.Data()
+	}
+
+	if len(snapdata)>6&&strings.EqualFold(hex.EncodeToString(snapdata[:6]),hex.EncodeToString([]byte("pledge"))){
+
+		pidData:=hexutil.SlitData(snapdata)
+
+
+		pledgeValue:=new(big.Int).Mul(new(big.Int).SetInt64(int64(len(pidData))),common.PledgeBase)
+		if tx.Value().Cmp(pledgeValue)<0||pool.currentState.GetBalance(from).Cmp(pledgeValue)<0{
+			return ErrInsufficientPledge
+		}
+	}
+
+	if pool.currentState.GetBalance(from).Cmp(tx.Cost()) <0&&!strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem"))){
 		return ErrInsufficientFunds
 	}
 
-	if strings.EqualFold(hex.EncodeToString(tx.Data()),hex.EncodeToString([]byte("redeem"))){
+	if strings.EqualFold(hex.EncodeToString(snapdata),hex.EncodeToString([]byte("redeem"))){
 
 		if total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()));pool.currentState.GetBalance(from).Cmp(total)<0{
 			return ErrInsufficientGas
 		}
 
-		// tx.Value()=pool.currentState.GetBalance(from)
 		
 		if pool.currentState.GetPledge(from).Cmp(tx.Value())<0{
 			return ErrInsufficientPledge
 		}
 	}
+
+
 	// Ensure the transaction has more gas than the basic tx fee.
 	intrGas, err := IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, pool.istanbul)
 	if err != nil {
@@ -665,8 +687,6 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		return false, err
 	}
 
-
-	fmt.Println(tx.Hash().Hex())
 
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
@@ -927,8 +947,6 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	newErrs, dirtyAddrs := pool.addTxsLocked(news, local)
 	pool.mu.Unlock()
 
-	fmt.Println(pool.queue)
-	fmt.Println(pool.pending)
 	var nilSlot = 0
 	for _, err := range newErrs {
 		for errs[nilSlot] != nil {
@@ -941,8 +959,6 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	// Reorg the pool internals if needed and return
 	done := pool.requestPromoteExecutables(dirtyAddrs)
 
-	fmt.Println(pool.queue)
-	fmt.Println(pool.pending)
 	if sync {
 		<-done
 	}
@@ -1340,9 +1356,6 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		log.Trace("Removed old queued transactions", "count", len(forwards))
 		// Drop all transactions that are too costly (low balance or out of gas)
 
-		// if !strings.EqualFold(hex.EncodeToString(pool.queue[accounts].txs.,hex.EncodeToString([]byte("redeem"))){
-
-		// }
 		//new gnc
 		drops, _ := list.Filter(pool.currentState.GetBalance(addr), pool.currentState.GetPledge(addr), pool.currentMaxGas)
 		for _, tx := range drops {

@@ -53,7 +53,11 @@ func main(){
 	
 	fmt.Println(hex.EncodeToString(hash0))
 
-	fmt.Println(hex.EncodeToString(hash0[:6]))
+	fmt.Println(hex.EncodeToString(hash0[6:]))
+	fmt.Println(hex.EncodeToString(hash0[6:38]))
+	fmt.Println(hex.EncodeToString(hash0[38:70]))
+	
+	fmt.Println(len(hash0[2:])/32,"dd")
 
 
 		err:=stateBloom.Put(hash[:],nil)
@@ -102,5 +106,8 @@ func (bloom *stateBloom) Put(key []byte, value []byte) error {
 
 
 func (bloom *stateBloom) Contain(key []byte) (bool, error) {
+	if len(key) != HashLength {
+		return false,errors.New("error")
+	}
 	return bloom.bloom.Contains(stateBloomHasher(key)), nil
 }
